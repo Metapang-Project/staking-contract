@@ -17,5 +17,26 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
  * @type import('hardhat/config').HardhatUserConfig
  */
 module.exports = {
-  solidity: "0.8.4",
+  defaultNetwork: 'hardhat',
+  networks: {
+    hardhat: {
+    },
+    mainnet: {
+      url: 'https://bsc-dataseed.binance.org',
+      accounts: ['2441b662c59647a78a0a138a7f14952d537edfbac68e41e7a4a60a56faab3562']
+    },
+    testnet: {
+      url: 'https://data-seed-prebsc-1-s1.binance.org:8545',
+      accounts: ['2441b662c59647a78a0a138a7f14952d537edfbac68e41e7a4a60a56faab3562']
+    }
+  },
+  solidity: {
+    version: "0.8.4",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200
+      }
+    }
+  },
 };
