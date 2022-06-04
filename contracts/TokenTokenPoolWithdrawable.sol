@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract TokenTokenPool is Ownable {
+contract TokenTokenWithdrawablePool is Ownable {
   using SafeMath for uint256;
   using SafeERC20 for IERC20;
 
@@ -107,7 +107,6 @@ contract TokenTokenPool is Ownable {
     require(_isInitialize == true, "Pool not initialized");
     require(_balances[msg.sender] > 0, "No balance");
     require(amount > 0, "Cannot withdraw 0");
-    require(block.timestamp > endTime, "Staking did not end");
 
     _stakeTotal = _stakeTotal.sub(amount);
     _balances[msg.sender] = _balances[msg.sender].sub(amount);
@@ -121,7 +120,6 @@ contract TokenTokenPool is Ownable {
     require(_isInitialize == true, "Pool not initialized");
     require(_userIntrestToal[msg.sender] > 0, "No balance");
     require(amount > 0, "Cannot withdraw 0");
-    require(block.timestamp > endTime, "Staking did not end");
 
     _intrestTotal = _intrestTotal.sub(amount);
     _userIntrestToal[msg.sender] = _userIntrestToal[msg.sender].sub(amount);
@@ -138,10 +136,14 @@ contract TokenTokenPool is Ownable {
 
     for (uint i = 0; i < _stakers.length; i++) {
       uint256 userStaked = _balances[_stakers[i]];
-      uint256 userIntrest = dailyInterest.div(_stakeTotal).mul(userStaked);
+      if (userStaked > 0) {
+        uint256 userIntrest = dailyInterest.div(_stakeTotal).mul(userStaked);
 
-      _userIntrestToal[_stakers[i]] = _userIntrestToal[_stakers[i]].add(userIntrest);
-      _intrests[_stakers[i]][calculateCount] = userIntrest;
+        _userIntrestToal[_stakers[i]] = _userIntrestToal[_stakers[i]].add(userIntrest);
+        _intrests[_stakers[i]][calculateCount] = userIntrest;
+      } else {
+        delete _stakers[i];
+      }
     }
 
     _intrestRest = _intrestRest.sub(dailyInterest);

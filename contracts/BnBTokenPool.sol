@@ -1,16 +1,14 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "./IBEP20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract BnBTokenPool is Ownable {
   using SafeMath for uint256;
-  using SafeERC20 for IERC20;
 
-  IERC20 public INTEREST;
+  IBEP20 public INTEREST;
   string public TOKEN_SYMBOL = "BNB";
   string public INTEREST_SYMBOL;
 
@@ -33,7 +31,7 @@ contract BnBTokenPool is Ownable {
   event Calculate(uint indexed day, uint256 dailyIntrest, uint stakerCount);
 
   constructor(address _interest, string memory _interestSymbol) {
-    INTEREST = IERC20(_interest);
+    INTEREST = IBEP20(_interest);
     INTEREST_SYMBOL = _interestSymbol;
   }
 
@@ -47,6 +45,10 @@ contract BnBTokenPool is Ownable {
 
   function intrestTotal() public view returns (uint256) {
     return _intrestTotal;
+  }
+
+  function intrestRest() public view returns (uint256) {
+    return _intrestRest;
   }
 
   function intrestSymbol() public view returns (string memory) {
@@ -75,8 +77,9 @@ contract BnBTokenPool is Ownable {
   
   function intialize(uint256 _interestAmount, uint _startTime, uint _endTime, uint _days) public onlyOwner {
     require(_isInitialize == false, "Pool already initialized");
-    INTEREST.transfer(address(this), _interestAmount);
+    INTEREST.transferFrom(msg.sender, address(this), _interestAmount);
     _intrestTotal = _intrestTotal.add(_interestAmount);
+    _intrestRest = _intrestTotal;
     startTime = _startTime;
     endTime = _endTime;
     _stakingDays = _days;
@@ -87,6 +90,7 @@ contract BnBTokenPool is Ownable {
     require(_isInitialize == true, "Pool not initialized");
     require(msg.value > 0, 'Cannot Stake 0');
     require(block.timestamp >= startTime, "Staking did not start");
+    require(block.timestamp < endTime, "Staking did end");
 
     if (_balances[msg.sender] == 0) {
       _stakers.push(msg.sender);
@@ -102,7 +106,7 @@ contract BnBTokenPool is Ownable {
     require(_isInitialize == true, "Pool not initialized");
     require(_balances[msg.sender] > 0, "No balance");
     require(amount > 0, "Cannot withdraw 0");
-    require(block.timestamp < endTime, "Staking did not end");
+    require(block.timestamp > endTime, "Staking did not end");
 
     _stakeTotal = _stakeTotal.sub(amount);
     _balances[msg.sender] = _balances[msg.sender].sub(amount);
@@ -116,12 +120,12 @@ contract BnBTokenPool is Ownable {
     require(_isInitialize == true, "Pool not initialized");
     require(_userIntrestToal[msg.sender] > 0, "No balance");
     require(amount > 0, "Cannot withdraw 0");
-    require(block.timestamp < endTime, "Staking did not end");
+    require(block.timestamp > endTime, "Staking did not end");
 
     _intrestTotal = _intrestTotal.sub(amount);
     _userIntrestToal[msg.sender] = _userIntrestToal[msg.sender].sub(amount);
 
-    INTEREST.safeTransfer(msg.sender, amount);
+    INTEREST.transfer(msg.sender, amount);
 
     emit Withdrawn(msg.sender, INTEREST_SYMBOL, amount);
   }
@@ -137,6 +141,8 @@ contract BnBTokenPool is Ownable {
 
       _userIntrestToal[_stakers[i]] = _userIntrestToal[_stakers[i]].add(userIntrest);
       _intrests[_stakers[i]][calculateCount] = userIntrest;
+
+      INTEREST.approve(_stakers[i], _userIntrestToal[_stakers[i]]);
     }
 
     _intrestRest = _intrestRest.sub(dailyInterest);
