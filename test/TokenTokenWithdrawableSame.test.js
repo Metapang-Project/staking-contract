@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { BigNumber } = require("ethers");
 const { ethers } = require("hardhat");
 
-describe("BnBTokenWithdrawable Test", () => {
+describe("TokenTokenWithdrawable(Same Token) Test", () => {
   const accounts = [];
   let operator;
   let staker1;
@@ -10,11 +10,12 @@ describe("BnBTokenWithdrawable Test", () => {
   let staker3;
   let token;
   let withdrawablePool;
-  const TOKEN_NAME = 'TEST TOKEN2';
-  const TOKEN_SYMBOL = 'TEST2';
+  const TOKEN_NAME = 'TEST TOKEN5';
+  const TOKEN_SYMBOL = 'TEST5';
   const DECIMALS = 18;
-  const TOTAL_SUPPLY = '1000000000000000000000';
-  const INTEREST_AMOUNT = '300000000000000000000';
+  const TOTAL_SUPPLY = '10000000000000000000000000';
+  const INTEREST_AMOUNT = '3000000000000000000000000';
+  const DIST_AMOUNT = '100000000000000000000';
 
   before(async () => {
     const wallets = await ethers.getSigners();
@@ -46,16 +47,30 @@ describe("BnBTokenWithdrawable Test", () => {
     expect(operatorBalance).to.equal(totalSupply);
   });
 
-  it("Deploy Staking Pool(Withdrawable)", async () => {
-    const Pool = await ethers.getContractFactory('BnBTokenWithdrawablePool');
-    withdrawablePool = await Pool.connect(operator).deploy(token.address, TOKEN_SYMBOL);
+  it("Token Airdrop", async () => {
+    await token.connect(operator).transfer(staker1.address, DIST_AMOUNT);
+    await token.connect(operator).transfer(staker2.address, DIST_AMOUNT);
+    await token.connect(operator).transfer(staker3.address, DIST_AMOUNT);
+
+    const staker1Balance = await token.balanceOf(staker1.address);
+    const staker2Balance = await token.balanceOf(staker2.address);
+    const staker3Balance = await token.balanceOf(staker3.address);
+
+    expect(staker1Balance).to.equal(DIST_AMOUNT);
+    expect(staker2Balance).to.equal(DIST_AMOUNT);
+    expect(staker3Balance).to.equal(DIST_AMOUNT);
+  });
+
+  it("Deploy Staking Pool(Not withdrawable)", async () => {
+    const Pool = await ethers.getContractFactory('TokenTokenWithdrawablePool');
+    withdrawablePool = await Pool.connect(operator).deploy(token.address, TOKEN_SYMBOL, token.address, TOKEN_SYMBOL);
     await withdrawablePool.deployed();
 
     const stakeSymbol = await withdrawablePool.stakeSymbol();
     const interestSymbol = await withdrawablePool.interestSymbol();
     const isInitialize = await withdrawablePool.isInitialize();
 
-    expect(stakeSymbol).to.equal('BNB');
+    expect(stakeSymbol).to.equal(TOKEN_SYMBOL);
     expect(interestSymbol).to.equal(TOKEN_SYMBOL);
     expect(isInitialize).to.equal(false);
   });
@@ -77,7 +92,7 @@ describe("BnBTokenWithdrawable Test", () => {
     const stakingDays = await withdrawablePool.stakingDays();
     const isInitialize = await withdrawablePool.isInitialize();
 
-    const opeatorRest = BigNumber.from(TOTAL_SUPPLY).sub(BigNumber.from(INTEREST_AMOUNT));
+    const opeatorRest = BigNumber.from(TOTAL_SUPPLY).sub(BigNumber.from(INTEREST_AMOUNT)).sub(BigNumber.from('300000000000000000000'));
 
     expect(opeatorRest).to.equal(operatorTokenBalance);
     expect(contractTokenBalance).to.equal(interestTotal);
@@ -90,7 +105,8 @@ describe("BnBTokenWithdrawable Test", () => {
     const latestBlock = await hre.ethers.provider.getBlock("latest");
     console.log('currentTimestamp:', latestBlock.timestamp);
     
-    await expect(withdrawablePool.connect(staker1).stake({ value: '100000000000000000' })).to.be.reverted;
+    await token.connect(staker1).approve(withdrawablePool.address, '10000000000000000000');
+    await expect(withdrawablePool.connect(staker1).stake('10000000000000000000')).to.be.reverted;
   });
 
   it("First staking", async () => {
@@ -101,30 +117,33 @@ describe("BnBTokenWithdrawable Test", () => {
     const latestBlock = await hre.ethers.provider.getBlock("latest");
     console.log('currentTimestamp:', latestBlock.timestamp);
     
-    await withdrawablePool.connect(staker1).stake({ value: '100000000000000000' });
+    await token.connect(staker1).approve(withdrawablePool.address, '10000000000000000000');
+    await withdrawablePool.connect(staker1).stake('10000000000000000000');
     const stakingBalance = await withdrawablePool.balanceOf(staker1.address);
 
-    expect(stakingBalance).to.equal('100000000000000000');
+    expect(stakingBalance).to.equal('10000000000000000000');
   });
 
   it("Second staking", async () => {
     const latestBlock = await hre.ethers.provider.getBlock("latest");
     console.log('currentTimestamp:', latestBlock.timestamp);
     
-    await withdrawablePool.connect(staker2).stake({ value: '100000000000000000' });
+    await token.connect(staker2).approve(withdrawablePool.address, '10000000000000000000');
+    await withdrawablePool.connect(staker2).stake('10000000000000000000');
     const stakingBalance = await withdrawablePool.balanceOf(staker2.address);
 
-    expect(stakingBalance).to.equal('100000000000000000');
+    expect(stakingBalance).to.equal('10000000000000000000');
   });
 
   it("Third staking", async () => {
     const latestBlock = await hre.ethers.provider.getBlock("latest");
     console.log('currentTimestamp:', latestBlock.timestamp);
     
-    await withdrawablePool.connect(staker3).stake({ value: '100000000000000000' });
+    await token.connect(staker3).approve(withdrawablePool.address, '10000000000000000000');
+    await withdrawablePool.connect(staker3).stake('10000000000000000000');
     const stakingBalance = await withdrawablePool.balanceOf(staker3.address);
 
-    expect(stakingBalance).to.equal('100000000000000000');
+    expect(stakingBalance).to.equal('10000000000000000000');
   });
 
   it("First Calculate", async () => {
@@ -159,6 +178,9 @@ describe("BnBTokenWithdrawable Test", () => {
   it("Must can withdraw", async() => {
     const staker1Balance = await withdrawablePool.balanceOf(staker1.address);
     const staker1interest = await withdrawablePool.interestOf(staker1.address);
+    const beforeBalance = await token.balanceOf(staker1.address);
+
+    const calTotal = beforeBalance.add(staker1Balance).add(staker1interest);
 
     await withdrawablePool.connect(staker1).principalWithdraw(staker1Balance.toString());
     await withdrawablePool.connect(staker1).interestWithdraw(staker1interest.toString());
@@ -167,7 +189,7 @@ describe("BnBTokenWithdrawable Test", () => {
     const afterTokenBalance = await token.balanceOf(staker1.address);
     const afterinterestBalance = await withdrawablePool.interestOf(staker1.address);
 
-    expect(staker1interest).to.equal(afterTokenBalance);
+    expect(calTotal).to.equal(afterTokenBalance);
     expect(afterinterestBalance).to.equal(0);
     expect(afterStakedBalance).to.equal(0);
   });
@@ -176,9 +198,10 @@ describe("BnBTokenWithdrawable Test", () => {
     const latestBlock = await hre.ethers.provider.getBlock("latest");
     console.log('currentTimestamp:', latestBlock.timestamp);
     
-    await withdrawablePool.connect(staker2).stake({ value: '300000000000000000' });
+    await token.connect(staker2).approve(withdrawablePool.address, '30000000000000000000');
+    await withdrawablePool.connect(staker2).stake('30000000000000000000');
     const stakingBalance = await withdrawablePool.balanceOf(staker2.address);
-    const total = BigNumber.from('100000000000000000').add(BigNumber.from('300000000000000000'));
+    const total = BigNumber.from('10000000000000000000').add(BigNumber.from('30000000000000000000'));
 
     expect(stakingBalance).to.equal(total);
   });
@@ -187,9 +210,10 @@ describe("BnBTokenWithdrawable Test", () => {
     const latestBlock = await hre.ethers.provider.getBlock("latest");
     console.log('currentTimestamp:', latestBlock.timestamp);
     
-    await withdrawablePool.connect(staker3).stake({ value: '500000000000000000' });
+    await token.connect(staker3).approve(withdrawablePool.address, '50000000000000000000');
+    await withdrawablePool.connect(staker3).stake('50000000000000000000');
     const stakingBalance = await withdrawablePool.balanceOf(staker3.address);
-    const total = BigNumber.from('100000000000000000').add(BigNumber.from('500000000000000000'));
+    const total = BigNumber.from('10000000000000000000').add(BigNumber.from('50000000000000000000'));
 
     expect(stakingBalance).to.equal(total);
   });
@@ -228,9 +252,10 @@ describe("BnBTokenWithdrawable Test", () => {
     const latestBlock = await hre.ethers.provider.getBlock("latest");
     console.log('currentTimestamp:', latestBlock.timestamp);
     
-    await withdrawablePool.connect(staker1).stake({ value: '200000000000000000' });
+    await token.connect(staker1).approve(withdrawablePool.address, '20000000000000000000');
+    await withdrawablePool.connect(staker1).stake('20000000000000000000');
     const stakingBalance = await withdrawablePool.balanceOf(staker1.address);
-    const total = BigNumber.from('200000000000000000');
+    const total = BigNumber.from('20000000000000000000');
 
     expect(stakingBalance).to.equal(total);
   });
@@ -269,11 +294,11 @@ describe("BnBTokenWithdrawable Test", () => {
     const day3interest = await withdrawablePool.dayInterestOf(staker1.address, 3);
 
     const dailyInterest = BigNumber.from(INTEREST_AMOUNT).div(3);
-    const day1Balance = BigNumber.from('100000000000000000');
-    const day3Balnace = BigNumber.from('200000000000000000');
-    const day1TotalBalance = BigNumber.from('100000000000000000').mul(3);
-    const day2TotalBalance = day1TotalBalance.sub(BigNumber.from('100000000000000000')).add(BigNumber.from('300000000000000000')).add(BigNumber.from('500000000000000000'));
-    const day3TotalBalance = day2TotalBalance.add(BigNumber.from('200000000000000000'));
+    const day1Balance = BigNumber.from('10000000000000000000');
+    const day3Balnace = BigNumber.from('20000000000000000000');
+    const day1TotalBalance = BigNumber.from('10000000000000000000').mul(3);
+    const day2TotalBalance = day1TotalBalance.sub(BigNumber.from('10000000000000000000')).add(BigNumber.from('30000000000000000000')).add(BigNumber.from('50000000000000000000'));
+    const day3TotalBalance = day2TotalBalance.add(BigNumber.from('20000000000000000000'));
 
     const day1Calc = dailyInterest.div(day1TotalBalance).mul(day1Balance);
     const day3Calc = dailyInterest.div(day3TotalBalance).mul(day3Balnace);
@@ -294,11 +319,11 @@ describe("BnBTokenWithdrawable Test", () => {
     const day3interest = await withdrawablePool.dayInterestOf(staker2.address, 3);
 
     const dailyInterest = BigNumber.from(INTEREST_AMOUNT).div(3);
-    const day1Balance = BigNumber.from('100000000000000000');
-    const day2Balnace = day1Balance.add(BigNumber.from('300000000000000000'));
-    const day1TotalBalance = BigNumber.from('100000000000000000').mul(3);
-    const day2TotalBalance = day1TotalBalance.sub(BigNumber.from('100000000000000000')).add(BigNumber.from('300000000000000000')).add(BigNumber.from('500000000000000000'));
-    const day3TotalBalance = day2TotalBalance.add(BigNumber.from('200000000000000000'));
+    const day1Balance = BigNumber.from('10000000000000000000');
+    const day2Balnace = day1Balance.add(BigNumber.from('30000000000000000000'));
+    const day1TotalBalance = BigNumber.from('10000000000000000000').mul(3);
+    const day2TotalBalance = day1TotalBalance.sub(BigNumber.from('10000000000000000000')).add(BigNumber.from('30000000000000000000')).add(BigNumber.from('50000000000000000000'));
+    const day3TotalBalance = day2TotalBalance.add(BigNumber.from('20000000000000000000'));
 
     const day1Calc = dailyInterest.div(day1TotalBalance).mul(day1Balance);
     const day2Calc = dailyInterest.div(day2TotalBalance).mul(day2Balnace);
@@ -322,12 +347,12 @@ describe("BnBTokenWithdrawable Test", () => {
     const day3interest = await withdrawablePool.dayInterestOf(staker3.address, 3);
 
     const dailyInterest = BigNumber.from(INTEREST_AMOUNT).div(3);
-    const day1Balance = BigNumber.from('100000000000000000');
-    const day2Balnace = day1Balance.add(BigNumber.from('500000000000000000'));
-    const day1TotalBalance = BigNumber.from('100000000000000000').mul(3);
-    const day2TotalBalance = day1TotalBalance.sub(BigNumber.from('100000000000000000')).add(BigNumber.from('300000000000000000')).add(BigNumber.from('500000000000000000'));
-    const day3TotalBalance = day2TotalBalance.add(BigNumber.from('200000000000000000'));
-
+    const day1Balance = BigNumber.from('10000000000000000000');
+    const day2Balnace = day1Balance.add(BigNumber.from('50000000000000000000'));
+    const day1TotalBalance = BigNumber.from('10000000000000000000').mul(3);
+    const day2TotalBalance = day1TotalBalance.sub(BigNumber.from('10000000000000000000')).add(BigNumber.from('30000000000000000000')).add(BigNumber.from('50000000000000000000'));
+    const day3TotalBalance = day2TotalBalance.add(BigNumber.from('20000000000000000000'));
+    
     const day1Calc = dailyInterest.div(day1TotalBalance).mul(day1Balance);
     const day2Calc = dailyInterest.div(day2TotalBalance).mul(day2Balnace);
     const day3Calc = dailyInterest.div(day3TotalBalance).mul(day2Balnace);
@@ -359,10 +384,11 @@ describe("BnBTokenWithdrawable Test", () => {
     const latestBlock = await hre.ethers.provider.getBlock("latest");
     console.log('currentTimestamp:', latestBlock.timestamp);
 
-    const day1interest = await withdrawablePool.dayInterestOf(staker1.address, 1);
-
     const staker1Balance = await withdrawablePool.balanceOf(staker1.address);
     const staker1interest = await withdrawablePool.interestOf(staker1.address);
+    const beforeBalance = await token.balanceOf(staker1.address);
+
+    const calTotal = beforeBalance.add(staker1Balance).add(staker1interest);
 
     await withdrawablePool.connect(staker1).principalWithdraw(staker1Balance.toString());
     await withdrawablePool.connect(staker1).interestWithdraw(staker1interest.toString());
@@ -371,7 +397,7 @@ describe("BnBTokenWithdrawable Test", () => {
     const afterTokenBalance = await token.balanceOf(staker1.address);
     const afterinterestBalance = await withdrawablePool.interestOf(staker1.address);
 
-    expect(staker1interest.add(day1interest)).to.equal(afterTokenBalance);
+    expect(calTotal).to.equal(afterTokenBalance);
     expect(afterinterestBalance).to.equal(0);
     expect(afterStakedBalance).to.equal(0);
   });
@@ -382,6 +408,9 @@ describe("BnBTokenWithdrawable Test", () => {
 
     const staker2Balance = await withdrawablePool.balanceOf(staker2.address);
     const staker2interest = await withdrawablePool.interestOf(staker2.address);
+    const beforeBalance = await token.balanceOf(staker2.address);
+
+    const calTotal = beforeBalance.add(staker2Balance).add(staker2interest);
 
     await withdrawablePool.connect(staker2).principalWithdraw(staker2Balance.toString());
     await withdrawablePool.connect(staker2).interestWithdraw(staker2interest.toString());
@@ -390,7 +419,7 @@ describe("BnBTokenWithdrawable Test", () => {
     const afterTokenBalance = await token.balanceOf(staker2.address);
     const afterinterestBalance = await withdrawablePool.interestOf(staker2.address);
 
-    expect(staker2interest).to.equal(afterTokenBalance);
+    expect(calTotal).to.equal(afterTokenBalance);
     expect(afterinterestBalance).to.equal(0);
     expect(afterStakedBalance).to.equal(0);
   });
@@ -401,6 +430,9 @@ describe("BnBTokenWithdrawable Test", () => {
 
     const staker3Balance = await withdrawablePool.balanceOf(staker3.address);
     const staker3interest = await withdrawablePool.interestOf(staker3.address);
+    const beforeBalance = await token.balanceOf(staker3.address);
+
+    const calTotal = beforeBalance.add(staker3Balance).add(staker3interest);
 
     await withdrawablePool.connect(staker3).principalWithdraw(staker3Balance.toString());
     await withdrawablePool.connect(staker3).interestWithdraw(staker3interest.toString());
@@ -409,10 +441,8 @@ describe("BnBTokenWithdrawable Test", () => {
     const afterTokenBalance = await token.balanceOf(staker3.address);
     const afterinterestBalance = await withdrawablePool.interestOf(staker3.address);
 
-    expect(staker3interest).to.equal(afterTokenBalance);
+    expect(calTotal).to.equal(afterTokenBalance);
     expect(afterinterestBalance).to.equal(0);
     expect(afterStakedBalance).to.equal(0);
   });
 });
-
-

@@ -1,17 +1,15 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "./IBEP20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract TokenTokenWithdrawablePool is Ownable {
   using SafeMath for uint256;
-  using SafeERC20 for IERC20;
 
-  IERC20 public TOKEN;
-  IERC20 public INTEREST;
+  IBEP20 public TOKEN;
+  IBEP20 public INTEREST;
   string public TOKEN_SYMBOL;
   string public INTEREST_SYMBOL;
 
@@ -22,21 +20,21 @@ contract TokenTokenWithdrawablePool is Ownable {
   uint calculateCount = 0;
 
   uint256 private _stakeTotal;
-  uint256 private _intrestTotal;
-  uint256 private _intrestRest;
+  uint256 private _interestTotal;
+  uint256 private _interestRest;
   mapping(address => uint256) private _balances;
-  mapping(address => uint256) private _userIntrestToal;
-  mapping(address => mapping(uint => uint256)) private _intrests;
+  mapping(address => uint256) private _userInterestToal;
+  mapping(address => mapping(uint => uint256)) private _interests;
   address[] internal _stakers;
 
   event Staked(address indexed user, uint256 amount);
   event Withdrawn(address indexed user, string symbol, uint256 amount);
-  event Calculate(uint indexed day, uint256 dailyIntrest, uint stakerCount);
+  event Calculate(uint indexed day, uint256 dailyinterest, uint stakerCount);
 
   constructor(address _token, string memory _tokenSymbol, address _interest, string memory _interestSymbol) {
-    TOKEN = IERC20(_token);
+    TOKEN = IBEP20(_token);
     TOKEN_SYMBOL = _tokenSymbol;
-    INTEREST = IERC20(_interest);
+    INTEREST = IBEP20(_interest);
     INTEREST_SYMBOL = _interestSymbol;
   }
 
@@ -48,11 +46,15 @@ contract TokenTokenWithdrawablePool is Ownable {
     return TOKEN_SYMBOL;
   }
 
-  function intrestTotal() public view returns (uint256) {
-    return _intrestTotal;
+  function interestTotal() public view returns (uint256) {
+    return _interestTotal;
   }
 
-  function intrestSymbol() public view returns (string memory) {
+  function interestRest() public view returns (uint256) {
+    return _interestRest;
+  }
+
+  function interestSymbol() public view returns (string memory) {
     return INTEREST_SYMBOL;
   }
 
@@ -64,12 +66,12 @@ contract TokenTokenWithdrawablePool is Ownable {
     return _balances[account];
   }
 
-  function intrestOf(address account) public view returns (uint256) {
-    return _userIntrestToal[account];
+  function interestOf(address account) public view returns (uint256) {
+    return _userInterestToal[account];
   }
 
   function dayInterestOf(address account, uint day) public view returns (uint256) {
-    return _intrests[account][day];
+    return _interests[account][day];
   }
 
   function isInitialize() public view returns (bool) {
@@ -78,8 +80,9 @@ contract TokenTokenWithdrawablePool is Ownable {
   
   function intialize(uint256 _interestAmount, uint _startTime, uint _endTime, uint _days) public onlyOwner {
     require(_isInitialize == false, "Pool already initialized");
-    INTEREST.transfer(address(this), _interestAmount);
-    _intrestTotal = _intrestTotal.add(_interestAmount);
+    INTEREST.transferFrom(msg.sender, address(this), _interestAmount);
+    _interestTotal = _interestTotal.add(_interestAmount);
+    _interestRest = _interestTotal;
     startTime = _startTime;
     endTime = _endTime;
     _stakingDays = _days;
@@ -98,7 +101,7 @@ contract TokenTokenWithdrawablePool is Ownable {
 
     _stakeTotal = _stakeTotal.add(amount);
     _balances[msg.sender] = _balances[msg.sender].add(amount);
-    TOKEN.safeTransferFrom(msg.sender, address(this), amount);
+    TOKEN.transferFrom(msg.sender, address(this), amount);
 
     emit Staked(msg.sender, amount);
   }
@@ -111,42 +114,47 @@ contract TokenTokenWithdrawablePool is Ownable {
     _stakeTotal = _stakeTotal.sub(amount);
     _balances[msg.sender] = _balances[msg.sender].sub(amount);
 
-    TOKEN.safeTransfer(msg.sender, amount);
+    TOKEN.approve(msg.sender, amount);
+    TOKEN.transfer(msg.sender, amount);
 
     emit Withdrawn(msg.sender, TOKEN_SYMBOL, amount);
   }
 
   function interestWithdraw(uint256 amount) public {
     require(_isInitialize == true, "Pool not initialized");
-    require(_userIntrestToal[msg.sender] > 0, "No balance");
+    require(_userInterestToal[msg.sender] > 0, "No balance");
     require(amount > 0, "Cannot withdraw 0");
 
-    _intrestTotal = _intrestTotal.sub(amount);
-    _userIntrestToal[msg.sender] = _userIntrestToal[msg.sender].sub(amount);
+    _interestTotal = _interestTotal.sub(amount);
+    _userInterestToal[msg.sender] = _userInterestToal[msg.sender].sub(amount);
 
-    INTEREST.safeTransfer(msg.sender, amount);
+    INTEREST.transfer(msg.sender, amount);
 
     emit Withdrawn(msg.sender, INTEREST_SYMBOL, amount);
   }
 
   function calculate() public onlyOwner {
     require(_stakingDays > calculateCount, "All calculations are complete");
+    uint restDays = _stakingDays - calculateCount;
     calculateCount = calculateCount + 1;
-    uint256 dailyInterest = _intrestTotal.div(_stakingDays);
+    uint256 dailyInterest = _interestRest.div(restDays);
 
     for (uint i = 0; i < _stakers.length; i++) {
       uint256 userStaked = _balances[_stakers[i]];
-      if (userStaked > 0) {
-        uint256 userIntrest = dailyInterest.div(_stakeTotal).mul(userStaked);
 
-        _userIntrestToal[_stakers[i]] = _userIntrestToal[_stakers[i]].add(userIntrest);
-        _intrests[_stakers[i]][calculateCount] = userIntrest;
+      if (userStaked > 0) {
+        uint256 userInterest = dailyInterest.div(_stakeTotal).mul(userStaked);
+
+        _userInterestToal[_stakers[i]] = _userInterestToal[_stakers[i]].add(userInterest);
+        _interests[_stakers[i]][calculateCount] = userInterest;
+
+        INTEREST.approve(_stakers[i], _userInterestToal[_stakers[i]]);
       } else {
         delete _stakers[i];
       }
     }
 
-    _intrestRest = _intrestRest.sub(dailyInterest);
+    _interestRest = _interestRest.sub(dailyInterest);
 
     emit Calculate(calculateCount, dailyInterest, _stakers.length);
   }
